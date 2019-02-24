@@ -1,3 +1,11 @@
+[![Netlify Status](https://api.netlify.com/api/v1/badges/277e56de-8eaa-4f06-8b9a-5dcf78dcf2e6/deploy-status)](https://app.netlify.com/sites/parsimony/deploys)
+
+# Parsimony
+
+Parsing termbase XML files (TBX) into CSV files.
+
+---
+
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
 ## Available Scripts
