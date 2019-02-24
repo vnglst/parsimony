@@ -1,44 +1,45 @@
 import React from 'react'
 import FileSaver from 'file-saver'
-import cheerio from 'cheerio'
+import sax from 'sax'
 
-let count = 0
-let total = 0
+// counts
+let openedTermEntries = 0
+let closedTermEntries = 0
+let totalTermEntries = 0
+let langCounts = {}
+
+// for csv
 let currentEntry = null
 let currentLang = null
 let currentNL = null
 let currentDE = null
 let result = ''
 
+var strict = true
+var parser = sax.parser(strict)
+
+parser.onopentag = function(tag) {
+  if (tag.name === 'termEntry') openedTermEntries++
+  if (tag.name === 'langSet') {
+    const lang = tag.attributes['xml:lang']
+    const currentCount = langCounts[lang]
+    langCounts[lang] = currentCount !== undefined ? currentCount + 1 : 0
+  }
+}
+
+parser.onclosetag = function(tag) {
+  if (tag === 'termEntry') closedTermEntries++
+}
+
+// parser.ontext = function(text) {
+//   const textWithEncoding = decodeURIComponent(escape(text))
+//   console.log(textWithEncoding)
+// }
+
 const parseLine = line => {
-  let $ = cheerio.load(line, {
-    xmlMode: true
-  })
-  const id = $('termEntry').attr('id')
-  if (id) {
-    if (currentEntry && currentNL && currentDE) {
-      result += `${currentEntry}, ${currentNL}, ${currentDE}\n`
-      count++
-    }
-    currentEntry = id
-    currentLang = null
-    currentNL = null
-    currentDE = null
-    total++
-  }
-
-  const lang = $('langSet').attr('xml:lang')
-  if (lang) {
-    currentLang = lang
-  }
-
-  const term = $('term').text()
-  if (term && currentLang === 'nl') {
-    currentNL = term
-  }
-  if (term && currentLang === 'de') {
-    currentDE = term
-  }
+  parser.write(line)
+  const termEntryCount = line.split('<termEntry').length - 1
+  totalTermEntries += termEntryCount
 }
 
 const App = () => {
@@ -47,27 +48,34 @@ const App = () => {
       type="file"
       onChange={e => {
         const file = e.target.files[0]
-        let soFar = null
+        let lastPiece = null
         console.time('Parsing file')
 
         parseFile(
           file,
-          part => {
-            const lines = ((soFar != null ? soFar : '') + part).split(/\r?\n/)
-            soFar = lines.pop()
-            lines.forEach(line => {
-              const lineWithEncoding = decodeURIComponent(escape(line))
-              parseLine(lineWithEncoding)
-            })
+          chunk => {
+            // TODO: splitting chunks on newlines is not according to xml spec!
+            const lines = ((lastPiece != null ? lastPiece : '') + chunk).split(
+              /\r?\n/
+            )
+            lastPiece = lines.pop()
+            lines.forEach(parseLine)
           },
           () => {
-            // console.log('last line' + soFar)
-            // console.log(result)
-            console.log(`Written ${count} terms of total ${total} terms.`)
-            const blob = new Blob([result], {
-              type: 'text/plain;charset=utf-8'
-            })
-            FileSaver.saveAs(blob, 'result.txt')
+            console.log('last piece' + lastPiece)
+            parser.end()
+            console.log(
+              `
+              Opened/closed ${openedTermEntries}/${closedTermEntries} termEntries. 
+              Expected: ${totalTermEntries}.
+              Language counts:
+              ${JSON.stringify(langCounts, null, 8)}
+              `
+            )
+            // const blob = new Blob([result], {
+            //   type: 'text/plain;charset=utf-8'
+            // })
+            // FileSaver.saveAs(blob, 'result.txt')
             console.timeEnd('Parsing file')
           }
         )
