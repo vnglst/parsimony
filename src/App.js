@@ -139,7 +139,6 @@ function startParse({ files, languages = [], onProgress }) {
 
   function handleFinish({ csvString, stats }) {
     console.timeEnd('Parsing file')
-    console.log(csvString)
 
     // saving file
     const blob = new Blob([csvString], { type: 'text/plain;charset=utf-8' })
