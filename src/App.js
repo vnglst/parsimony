@@ -23,21 +23,56 @@ class App extends React.Component {
     this.state = {
       files: [],
       progress: 0,
-      stats: {}
+      langs: {}
     }
   }
 
   onDrop(files) {
-    this.setState({ files })
+    this.setState({ files, langs: {}, progress: 0 })
+  }
+
+  handleLangChange = e => {
+    const lang = e.target.value
+    this.setState(prevState => ({
+      langs: {
+        ...prevState.langs,
+        [lang]: !prevState.langs[lang]
+      }
+    }))
   }
 
   render() {
-    const { files, progress, stats } = this.state
-    const renderedFiles = files.map(file => (
+    const { files, progress, langs, totalTermEntries } = this.state
+
+    const fileList = files.map(file => (
       <li key={file.name}>
         {file.name} - {(file.size / 1024) * 1024} MB
       </li>
     ))
+
+    const langList = Object.keys(langs).map(lang => {
+      return (
+        <label
+          key={lang}
+          style={{
+            display: 'inline-block',
+            margin: '5px',
+            padding: '2px',
+            border: '1px dashed grey'
+          }}
+        >
+          <input
+            type="checkbox"
+            name="language"
+            value={lang}
+            key={lang + langs[lang]}
+            checked={langs[lang]}
+            onChange={this.handleLangChange}
+          />
+          {lang}
+        </label>
+      )
+    })
 
     return (
       <Dropzone onDrop={this.onDrop.bind(this)}>
@@ -59,21 +94,31 @@ class App extends React.Component {
             </button>
             {isDragActive && <div style={overlayStyle}>Drop files here</div>}
             <input
-              value="Start parser!"
+              value={totalTermEntries > 0 ? 'Parse' : 'Analyze'}
               type="submit"
-              id="process"
+              id="parse"
               disabled={files.length === 0}
               onClick={e => {
                 e.preventDefault()
-                startParse(files, (progress, stats) => {
-                  this.setState({ progress: progress / 100, stats })
+                startParse({
+                  files,
+                  languages: Object.keys(langs).filter(lang => langs[lang]),
+                  onProgress: (progress, stats) => {
+                    const langs = {}
+                    Object.keys(stats.langCounts).forEach(
+                      lang => (langs[lang] = false)
+                    )
+                    this.setState({ progress, ...stats, langs })
+                  }
                 })
               }}
             />
             <h2>Files</h2>
-            <ul>{renderedFiles}</ul>
-            <ProgressIndicator label="Progress" percentComplete={progress} />
-            <pre>{JSON.stringify(stats, null, '\t')}</pre>
+            <ul>{fileList}</ul>
+            <h2>Languages</h2>
+            <div>{langList}</div>
+            <ProgressIndicator percentComplete={progress} />
+            <pre>{JSON.stringify(this.state, null, '\t')}</pre>
           </div>
         )}
       </Dropzone>
@@ -81,19 +126,20 @@ class App extends React.Component {
   }
 }
 
-function startParse(files, onProgress) {
+function startParse({ files, languages = [], onProgress }) {
   const file = files[0]
   if (!file) return
   console.time('Parsing file')
   parseFile({
     file,
+    languages,
     onProgress,
     onFinish: handleFinish
   })
 
   function handleFinish({ csvString, stats }) {
     console.timeEnd('Parsing file')
-    console.log(stats)
+    console.log(csvString)
 
     // saving file
     const blob = new Blob([csvString], { type: 'text/plain;charset=utf-8' })

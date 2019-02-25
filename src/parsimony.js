@@ -17,12 +17,24 @@ let currentLang = null
 let terms = {}
 let readTermText = false
 let csvString = ''
+let selectedLanguages
+
+const containsAllSelected = () => {
+  if (selectedLanguages.length === 0) return false
+  let hasAll = true
+  selectedLanguages.forEach(lang => {
+    if (!terms[lang]) hasAll = false
+  })
+  return hasAll
+}
 
 parser.onopentag = function(tag) {
   if (tag.name === 'termEntry') {
-    if (currentEntry && terms.de && terms.nl) {
+    if (currentEntry && containsAllSelected()) {
       stats.writtenEntries++
-      csvString += `${currentEntry}, ${terms.de}, ${terms.nl}\n`
+      csvString += `${currentEntry}, `
+      selectedLanguages.forEach(l => (csvString += `${terms[l]}, `))
+      csvString += `\n`
     }
     currentEntry = tag.attributes.id
     currentLang = null
@@ -48,8 +60,13 @@ parser.onopentag = function(tag) {
 
 parser.ontext = function(text) {
   if (readTermText) {
-    const textWithEncoding = decodeURIComponent(escape(text))
-    terms[currentLang] = textWithEncoding
+    try {
+      const textWithEncoding = decodeURIComponent(escape(text))
+      terms[currentLang] = textWithEncoding
+    } catch (error) {
+      console.error('decoding error', error, text)
+      terms[currentLang] = text
+    }
   }
   readTermText = false
 }
@@ -58,7 +75,9 @@ parser.ontext = function(text) {
 let lastPiece = null
 
 // stream file in chunks
-export function parseFile({ file, onProgress, onFinish }) {
+export function parseFile({ file, languages, onProgress, onFinish }) {
+  console.log('parsing languages', languages)
+  selectedLanguages = languages
   const startTime = new Date()
   const fileSize = file.size
   const chunkSize = 1 * 1024 * 1024 // 1 MB
@@ -82,6 +101,7 @@ export function parseFile({ file, onProgress, onFinish }) {
     offset += evt.target.result.length
     parseChunk(evt.target.result)
 
+    // when parsing is complete
     if (offset >= fileSize) {
       parser.end()
 
@@ -90,7 +110,7 @@ export function parseFile({ file, onProgress, onFinish }) {
       stats.processTime = endTime - startTime
 
       // update progress 1 last time
-      onProgress(offset / fileSize, stats)
+      onProgress(1, stats)
 
       // send results to callback
       onFinish({ csvString, stats })
